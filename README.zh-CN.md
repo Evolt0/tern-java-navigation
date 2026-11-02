@@ -41,6 +41,14 @@ brew install JetBrains/utils/kotlin-lsp
 
 Homebrew 的 `jdtls` 是 1.63，会一并安装兼容的 OpenJDK。只有 Java 21 的机器改用 [JDT LS 1.61.0](https://download.eclipse.org/jdtls/milestones/1.61.0/)，它支持 `java.search.scope` 且可在 Java 21 运行。
 
+如果 Homebrew 因本机 Xcode 版本低于公式要求而拒绝安装 `kotlin-lsp`，可解压已校验的官方 standalone 归档，并放到发现路径：
+
+```sh
+mkdir -p ~/.local/share/kotlin-lsp ~/.local/bin
+# 在这里解压下载的 kotlin-server 归档（不是 .sit 安装包）。
+ln -s ~/.local/share/kotlin-lsp/kotlin-server-<version>/bin/intellij-server ~/.local/bin/kotlin-lsp
+```
+
 手动安装、Linux 或需要固定版本时：
 
 - [JDT LS 1.63.0 下载目录](https://download.eclipse.org/jdtls/milestones/1.63.0/)（Java 25+），或 [JDT LS 1.61.0](https://download.eclipse.org/jdtls/milestones/1.61.0/)（Java 21+）：下载归档并验证对应 SHA-256，解压后设置 `JDTLS_HOME`。1.62 / 1.63 的上游 README 仍写 Java 21，但实际 Eclipse bundles 要求 25。

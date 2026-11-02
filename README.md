@@ -32,6 +32,14 @@ brew install JetBrains/utils/kotlin-lsp
 
 Homebrew's `jdtls` is 1.63 and installs a compatible OpenJDK automatically. On a machine with only Java 21, use [JDT LS 1.61.0](https://download.eclipse.org/jdtls/milestones/1.61.0/) instead; it supports `java.search.scope` and runs on 21.
 
+If Homebrew refuses `kotlin-lsp` because the installed Xcode is older than the formula requires, extract the verified standalone archive instead and place it where discovery looks:
+
+```sh
+mkdir -p ~/.local/share/kotlin-lsp ~/.local/bin
+# Extract the downloaded kotlin-server archive (not the .sit installer) here.
+ln -s ~/.local/share/kotlin-lsp/kotlin-server-<version>/bin/intellij-server ~/.local/bin/kotlin-lsp
+```
+
 For Linux or pinned installations, download and verify the adjacent SHA-256 checksums before extracting:
 
 - [JDT LS 1.63.0 distribution](https://download.eclipse.org/jdtls/milestones/1.63.0/) (Java 25+), or [JDT LS 1.61.0](https://download.eclipse.org/jdtls/milestones/1.61.0/) (Java 21+). Set `JDTLS_HOME` to the extracted root. Upstream READMEs for 1.62/1.63 still say Java 21, but their Eclipse bundles require 25.
