@@ -35,10 +35,16 @@ def create_build(project, build_tool, env):
         # the fixture, so cross-language navigation cannot rely on class files.
         subprocess.run([gradle, "--no-daemon", "wrapper", "--gradle-version", GRADLE_VERSION],
                        cwd=project, env=env, check=True, timeout=180)
+        gradlew = project / ("gradlew.bat" if os.name == "nt" else "gradlew")
+        # With an isolated GRADLE_USER_HOME the first import would download the
+        # distribution and Kotlin plugin inside the language-server timeout.
+        # Warm both here; `help` configures the plugin without compiling sources.
+        subprocess.run([str(gradlew), "--version"], cwd=project, env=env, check=True, timeout=300)
         (project / "build.gradle.kts").write_text(
             'plugins { kotlin("jvm") version "' + KOTLIN_VERSION + '" }\n'
             'repositories { mavenCentral() }\n'
             'kotlin { jvmToolchain(21) }\n', encoding="utf-8")
+        subprocess.run([str(gradlew), "--no-daemon", "help"], cwd=project, env=env, check=True, timeout=300)
         return
     (project / "pom.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -72,6 +78,10 @@ def smoke(binary, project, build_tool):
     require(bool(resolved), "install the official kotlin-lsp server or set KOTLIN_LSP to its executable")
     env = dict(os.environ, KOTLIN_LSP=str(Path(resolved).resolve()),
                TERN_WINDOW_KEY="kotlin-release-smoke-" + uuid.uuid4().hex)
+    # CI Gradle actions install init scripts and caching into GRADLE_USER_HOME.
+    # The language server imports with the runner's Gradle and must not inherit
+    # them: an isolated home proves the project imports on its own.
+    env["GRADLE_USER_HOME"] = str(project.parent / "gradle-user-home")
     create_build(project, build_tool, env)
     kotlin = project / "src/main/kotlin/mixedsmoke"
     java = project / "src/main/java/mixedsmoke"
@@ -142,6 +152,7 @@ def smoke(binary, project, build_tool):
         check_destinations(actual, destinations)
 
     query = query_at(caller, "UnsavedKotlinNeedle")
+    step = "dirty Kotlin navigation"
     try:
         actual = run_query(binary, project, env, query)
         check_kotlin_navigation(actual, [
@@ -151,6 +162,7 @@ def smoke(binary, project, build_tool):
         ], {java_caller: ("UnsavedKotlinNeedle", "new KotlinTarget()")})
         require([item["kind"] for item in actual] == ["definition", "reference", "reference"],
                 "Kotlin navigation must put definitions before references")
+        step = "Kotlin to Java navigation"
         check_kotlin_navigation(run_query(binary, project, env,
                                            query_at(kotlin_java_caller, "JavaNeedleMethod")), [
             expected(java_target, "JavaNeedleMethod", "definition"),
@@ -158,6 +170,7 @@ def smoke(binary, project, build_tool):
             expected(java_native_caller, "JavaNeedleMethod", "reference"),
         ], {java_native_caller: ("JavaNeedleMethod", "JavaTarget.")})
         # Java focus uses JDT LS, which indexes Java references separately.
+        step = "Java navigation"
         check_destinations(run_query(binary, project, env,
                                      query_at(java_native_caller, "JavaNeedleMethod")), dict([
             expected(java_target, "JavaNeedleMethod", "definition"),
@@ -165,12 +178,16 @@ def smoke(binary, project, build_tool):
         ]))
         for path, needle in ((target, "UnsavedKotlinNeedle"), (unopened, "ClosedKotlinNeedleMethod"),
                              (java_target, "JavaNeedleMethod")):
+            step = "symbols " + needle
             check_destinations(run_query(binary, project, env, dict(query, action="symbols", search=needle)),
                                dict([expected(path, needle, "symbol", needle)]))
+        step = "stale symbol exclusion"
         check_destinations(run_query(binary, project, env,
                                      dict(query, action="symbols", search="DiskOriginal")), {})
         for path, text in saved.items():
             require(path.read_text(encoding="utf-8") == text, "unsaved overlay modified disk: " + str(path))
+    except ValueError as error:
+        raise ValueError(step + ": " + str(error)) from error
     finally:
         # Each focus language selects its own language-server session.
         run_query(binary, project, env, query, shutdown=True)
@@ -189,16 +206,30 @@ def main():
         parser.error("provide either a release archive or --binary")
     if args.archive:
         require(archive_target(args.archive) == native_target(), "Kotlin smoke requires a matching native release")
-    with tempfile.TemporaryDirectory(prefix="kotlin-navigation-smoke-") as temporary:
-        root = Path(temporary).resolve()
+    root = Path(tempfile.mkdtemp(prefix="kotlin-navigation-smoke-")).resolve()
+    try:
         binary = args.binary.resolve() if args.binary else validate_and_extract(args.archive.resolve(), root)
         require(binary.is_file() and os.access(binary, os.X_OK), "smoke binary is not executable: " + str(binary))
         for build_tool in (("maven", "gradle") if args.build_tool == "all" else (args.build_tool,)):
             smoke(binary, root / build_tool, build_tool)
+    finally:
+        # Gradle or the Kotlin server can still be flushing caches just after
+        # shutdown. The smoke result is already known; do not fail on cleanup.
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def kotlin_log_tail():
+    logs = sorted(Path(tempfile.gettempdir()).glob(
+        "tern-java-*/**/kotlin/system/log/intellij-server.log"),
+        key=lambda path: path.stat().st_mtime, reverse=True)
+    if not logs:
+        return ""
+    return "\n".join(logs[0].read_text(encoding="utf-8", errors="replace").splitlines()[-80:])
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, ValueError, tarfile.TarError, subprocess.SubprocessError) as error:
-        raise SystemExit("Kotlin release smoke failed: " + str(error))
+        tail = kotlin_log_tail()
+        raise SystemExit("Kotlin release smoke failed: " + str(error) + (("\n" + tail) if tail else ""))
