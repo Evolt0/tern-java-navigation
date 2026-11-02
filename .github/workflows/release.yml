@@ -180,6 +180,18 @@ jobs:
           ARCHIVE: ${{ steps.metadata.outputs.archive }}
         run: python3 scripts/smoke_kotlin.py "dist/$ARCHIVE" --build-tool all
 
+      - name: Upload language-server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: diagnostics-${{ matrix.target }}
+          path: |
+            /tmp/tern-java-*/**/*.log
+            /private/tmp/tern-java-*/**/*.log
+          if-no-files-found: ignore
+          retention-days: 3
+          compression-level: 0
+
       - name: Upload archive and checksum
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -218,18 +218,27 @@ def main():
         shutil.rmtree(root, ignore_errors=True)
 
 
-def kotlin_log_tail():
-    logs = sorted(Path(tempfile.gettempdir()).glob(
-        "tern-java-*/**/kotlin/system/log/intellij-server.log"),
-        key=lambda path: path.stat().st_mtime, reverse=True)
+def log_tail(pattern):
+    logs = sorted(Path(tempfile.gettempdir()).glob(pattern),
+                  key=lambda path: path.stat().st_mtime, reverse=True)
     if not logs:
         return ""
-    return "\n".join(logs[0].read_text(encoding="utf-8", errors="replace").splitlines()[-80:])
+    return "\n".join(logs[0].read_text(encoding="utf-8", errors="replace").splitlines()[-100:])
+
+
+def diagnostics():
+    parts = []
+    for label, pattern in (("JDT LS", "tern-java-*/**/data/.metadata/.log"),
+                           ("Kotlin LSP", "tern-java-*/**/kotlin/system/log/intellij-server.log")):
+        tail = log_tail(pattern)
+        if tail:
+            parts.append(label + " log:\n" + tail)
+    return "\n\n".join(parts)
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, ValueError, tarfile.TarError, subprocess.SubprocessError) as error:
-        tail = kotlin_log_tail()
-        raise SystemExit("Kotlin release smoke failed: " + str(error) + (("\n" + tail) if tail else ""))
+        tail = diagnostics()
+        raise SystemExit("Kotlin release smoke failed: " + str(error) + (("\n\n" + tail) if tail else ""))
