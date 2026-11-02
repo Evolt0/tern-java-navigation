@@ -1,0 +1,239 @@
+name: CI and Release
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to backfill missing assets; blank builds only
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and smoke ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+            kotlin_archive: kotlin-server-263.7084.0-aarch64.sit
+            kotlin_sha256: b403bf8a54bd458e3ba6731cf8abb3340be08b439c03576dfc02b13faf3694b8
+          - target: darwin-amd64
+            runner: macos-15-intel
+            kotlin_archive: kotlin-server-263.7084.0.sit
+            kotlin_sha256: b29c393a5e541153d03d626e7946268437e358a667a5f914a126dbb4007664b1
+          - target: linux-amd64
+            runner: ubuntu-24.04
+            kotlin_archive: kotlin-server-263.7084.0.tar.gz
+            kotlin_sha256: ae0c4b01e17ab73a4a5227a78ea99e6dcbe3e499600315b22759a4e4cddd11df
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            kotlin_archive: kotlin-server-263.7084.0-aarch64.tar.gz
+            kotlin_sha256: 450ab7c1d80e48106aa429b48cb4226d82ca12a8a2400447ae02386794780cac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      TARGET: ${{ matrix.target }}
+      RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: source
+          ref: ${{ inputs.release_tag || github.sha }}
+          persist-credentials: false
+
+      - name: Validate manifest and release tag
+        id: metadata
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            python3 scripts/package.py --source source --check-tag "$RELEASE_TAG"
+          fi
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "scripts")
+          from package import archive_name, manifest_version
+          version = manifest_version(Path("source/plugin.toml").read_text(encoding="utf-8"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("archive=" + archive_name(version, os.environ["TARGET"]) + "\n")
+          PY
+
+      - name: Set up stable Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Set up JDK 25 for JDT LS
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Retain language-server runtime
+        run: echo "JDTLS_JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 21 for project builds
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle for mixed-project smoke
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Install verified Eclipse JDT LS
+        env:
+          JDTLS_URL: https://download.eclipse.org/jdtls/milestones/1.63.0/jdt-language-server-1.63.0-202610191322.tar.gz
+          JDTLS_SHA256: b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4
+        run: |
+          curl --fail --location --retry 3 "$JDTLS_URL" --output "$RUNNER_TEMP/jdtls.tar.gz"
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          archive = Path(os.environ["RUNNER_TEMP"]) / "jdtls.tar.gz"
+          actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if actual != os.environ["JDTLS_SHA256"]:
+              raise SystemExit("Eclipse JDT LS SHA-256 mismatch: " + actual)
+          PY
+          mkdir "$RUNNER_TEMP/jdtls"
+          tar -xzf "$RUNNER_TEMP/jdtls.tar.gz" -C "$RUNNER_TEMP/jdtls"
+          echo "JDTLS_HOME=$RUNNER_TEMP/jdtls" >> "$GITHUB_ENV"
+
+      - name: Install verified official Kotlin server
+        env:
+          KOTLIN_ARCHIVE: ${{ matrix.kotlin_archive }}
+          KOTLIN_SHA256: ${{ matrix.kotlin_sha256 }}
+        run: |
+          curl --fail --location --retry 3 "https://download.jetbrains.com/language-server/kotlin-server/263.7084.0/$KOTLIN_ARCHIVE" --output "$RUNNER_TEMP/$KOTLIN_ARCHIVE"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "scripts")
+          from package import sha256
+          archive = Path(os.environ["RUNNER_TEMP"]) / os.environ["KOTLIN_ARCHIVE"]
+          actual = sha256(archive)
+          if actual != os.environ["KOTLIN_SHA256"]:
+              raise SystemExit("Official Kotlin server SHA-256 mismatch: " + actual)
+          PY
+          mkdir "$RUNNER_TEMP/kotlin-lsp"
+          case "$KOTLIN_ARCHIVE" in
+            *.sit) ditto -x -k "$RUNNER_TEMP/$KOTLIN_ARCHIVE" "$RUNNER_TEMP/kotlin-lsp" ;;
+            *.tar.gz) tar -xzf "$RUNNER_TEMP/$KOTLIN_ARCHIVE" -C "$RUNNER_TEMP/kotlin-lsp" ;;
+          esac
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "kotlin-lsp"
+          launchers = [path for path in root.rglob("intellij-server")
+                       if path.parent.name == "bin" and path.is_file() and os.access(path, os.X_OK)]
+          if len(launchers) != 1:
+              raise SystemExit("Expected one executable bin/intellij-server: " + repr(launchers))
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write("KOTLIN_LSP=" + str(launchers[0]) + "\n")
+          PY
+
+      - name: Run race-enabled tests
+        working-directory: source
+        run: go test -race ./...
+
+      - name: Package release
+        run: |
+          if [ -n "$RELEASE_TAG" ]; then
+            python3 scripts/package.py --source source --target "$TARGET" --output dist --tag "$RELEASE_TAG"
+          else
+            python3 scripts/package.py --source source --target "$TARGET" --output dist
+          fi
+
+      - name: Smoke the packaged executable
+        env:
+          ARCHIVE: ${{ steps.metadata.outputs.archive }}
+        run: python3 scripts/smoke_release.py "dist/$ARCHIVE"
+
+      - name: Smoke mixed Java and Kotlin Maven and Gradle projects
+        env:
+          ARCHIVE: ${{ steps.metadata.outputs.archive }}
+        run: python3 scripts/smoke_kotlin.py "dist/$ARCHIVE" --build-tool all
+
+      - name: Upload archive and checksum
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: java-navigation-${{ matrix.target }}
+          path: |
+            dist/${{ steps.metadata.outputs.archive }}
+            dist/${{ steps.metadata.outputs.archive }}.sha256
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish release assets
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified build artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: java-navigation-*
+          merge-multiple: true
+          path: dist
+
+      - name: Verify checksums and publish assets
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          sha256sum -c *.sha256
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          tag = os.environ["RELEASE_TAG"]
+          assets = sorted(path.name for path in Path(".").iterdir() if path.is_file())
+          if os.environ["EVENT_NAME"] == "push":
+              subprocess.run(
+                  ["gh", "release", "create", tag, *assets, "--verify-tag", "--generate-notes"],
+                  check=True,
+              )
+          else:
+              release = json.loads(subprocess.check_output(
+                  ["gh", "release", "view", tag, "--json", "assets"], text=True,
+              ))
+              existing = {asset["name"] for asset in release["assets"]}
+              missing = [asset for asset in assets if asset not in existing]
+              if missing:
+                  subprocess.run(["gh", "release", "upload", tag, *missing], check=True)
+          PY
