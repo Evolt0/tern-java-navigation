@@ -55,7 +55,7 @@ JDT 运行时优先使用 `JDTLS_JAVA_HOME`；否则在 `JAVA_HOME`、PATH 和�
 | 服务 | 顺序 |
 | --- | --- |
 | Java | `JDTLS` 可执行路径 → `JDTLS_HOME` 发行目录 → PATH 的 `jdtls` → Homebrew 常见位置 |
-| Kotlin | `KOTLIN_LSP` 可执行路径 → `KOTLIN_LSP_HOME` 发行目录 → PATH 的 `kotlin-lsp` / `intellij-server` → Homebrew 常见位置 |
+| Kotlin | `KOTLIN_LSP` 可执行路径 → `KOTLIN_LSP_HOME` 发行目录 → PATH 的 `kotlin-lsp` / `intellij-server` → Homebrew 常见位置 → `~/.local/bin/kotlin-lsp` / `~/.local/share/kotlin-lsp/current` |
 
 `JDTLS` / `KOTLIN_LSP` 是单个可执行路径，不是附带参数的 shell 命令。Kotlin 使用 `--stdio` 和独立的 `--system-path`。插件不替用户接受 EULA，不发送额外遥测；已验证的 Kotlin 发行包默认 telemetry 为 none。
 

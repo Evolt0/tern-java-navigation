@@ -44,7 +44,7 @@ Runtime selection is `JDTLS_JAVA_HOME` → the newest compatible Java found via 
 | Server | Discovery order |
 | --- | --- |
 | Java | `JDTLS` executable → `JDTLS_HOME` distribution → `jdtls` on PATH → common Homebrew locations |
-| Kotlin | `KOTLIN_LSP` executable → `KOTLIN_LSP_HOME` distribution → `kotlin-lsp` / `intellij-server` on PATH → common Homebrew locations |
+| Kotlin | `KOTLIN_LSP` executable → `KOTLIN_LSP_HOME` distribution → `kotlin-lsp` / `intellij-server` on PATH → common Homebrew locations → `~/.local/bin/kotlin-lsp` / `~/.local/share/kotlin-lsp/current` |
 
 Executable overrides are paths, not shell command strings with arguments. Kotlin launches with `--stdio` and an isolated `--system-path`. The plugin does not accept EULAs on your behalf or enable additional telemetry; the verified Kotlin distribution defaults to telemetry off.
 

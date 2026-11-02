@@ -4,6 +4,7 @@
 
 - 支持 Java 21：JDT LS 1.61 可在 Java 21+ 运行且具备 `projectOnly` 引用范围；1.62 / 1.63 的实际 Eclipse bundles 要求 Java 25。插件运行时下限降为 21，并自动选择最新兼容 Java；显式 `JDTLS_JAVA_HOME` 仍会校验版本。
 - 项目源码级别仍由 JDT 支持 Java 8–25，与语言服务运行时无关；文档增加 JDT 版本 / Java 运行时对应关系及 `osgi.ee ... version=25` 排错。
+- Kotlin LSP 发现增加 `~/.local/bin/kotlin-lsp` 与 `~/.local/share/kotlin-lsp/current`，便于在 Homebrew 公式受 Xcode 版本限制时安装官方压缩包。
 - CI 在 linux-amd64 额外用 JDT LS 1.61 + JDK 21 执行真实 Java 冒烟，覆盖 Java 21 路径。
 
 ## 0.1.1 — 2026-11-02

@@ -424,6 +424,11 @@ func discoverKotlinLS(root string) (javaLaunch, error) {
 			candidates = []string{filepath.Join(home, "bin", "intellij-server"), filepath.Join(home, "bin", "kotlin-lsp"), filepath.Join(home, "kotlin-lsp.sh")}
 		} else {
 			candidates = []string{"kotlin-lsp", "intellij-server", "/opt/homebrew/bin/kotlin-lsp", "/usr/local/bin/kotlin-lsp", "/opt/homebrew/opt/kotlin-lsp/libexec/bin/intellij-server", "/usr/local/opt/kotlin-lsp/libexec/bin/intellij-server"}
+			if home, err := os.UserHomeDir(); err == nil {
+				candidates = append(candidates,
+					filepath.Join(home, ".local", "bin", "kotlin-lsp"),
+					filepath.Join(home, ".local", "share", "kotlin-lsp", "current", "bin", "intellij-server"))
+			}
 		}
 		for _, candidate := range candidates {
 			if executable, err := exec.LookPath(candidate); err == nil {
