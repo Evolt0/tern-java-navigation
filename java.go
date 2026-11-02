@@ -197,8 +197,14 @@ func copyJDTConfiguration(source, destination string) error {
 }
 
 func javaSettings() map[string]any {
+	gradle := map[string]any{"enabled": true, "wrapper": map[string]any{"enabled": true}}
+	// JDT LS itself runs on Java 25, while Gradle 8.x cannot run on 25.
+	// Buildship otherwise launches Gradle with the language server's JVM.
+	if home := os.Getenv("JAVA_HOME"); home != "" {
+		gradle["java"] = map[string]any{"home": home}
+	}
 	return map[string]any{"java": map[string]any{
-		"import":        map[string]any{"maven": map[string]any{"enabled": true}, "gradle": map[string]any{"enabled": true, "wrapper": map[string]any{"enabled": true}}, "exclusions": []string{"**/node_modules/**", "**/.git/**", "**/target/**", "**/build/**"}},
+		"import":        map[string]any{"maven": map[string]any{"enabled": true}, "gradle": gradle, "exclusions": []string{"**/node_modules/**", "**/.git/**", "**/target/**", "**/build/**"}},
 		"configuration": map[string]any{"updateBuildConfiguration": "automatic"},
 		"autobuild":     map[string]any{"enabled": true},
 		"search":        map[string]any{"scope": "projectOnly"},

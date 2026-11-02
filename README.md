@@ -13,7 +13,7 @@ Go retains the reference implementation's inexpensive CLI startup, Unix socket d
 ## Requirements
 
 - Tern with the `tern` CLI available.
-- Java: **JDT LS 1.63.0+ and a Java 25+ server runtime**. The project build JDK is independent; use `JDTLS_JAVA_HOME` for the server and keep `JAVA_HOME` for your project.
+- Java: **JDT LS 1.63.0+ and a Java 25+ server runtime**. The project build JDK is independent; use `JDTLS_JAVA_HOME` for the server and keep `JAVA_HOME` for your project. Gradle imports run on `JAVA_HOME`; Gradle 8.x cannot run on Java 25, so point `JAVA_HOME` at a supported JDK (for example 21) or use Gradle 9.
 - Kotlin: **JetBrains Kotlin LSP 263.7084.0**, not `fwcd/kotlin-language-server`. Platform-specific standalone distributions include their required JBR; the project's own build JDK is separate.
 - Go 1.23+ to build this helper from source.
 - Python 3.9+ for packaging and release smoke scripts. The plugin does not require Python when using `JDTLS_HOME`; upstream's optional `jdtls` launcher itself uses Python.
@@ -115,6 +115,7 @@ State lives under `/tmp/tern-java-<uid>/<identity>/`, with private 0700 director
 ## Troubleshooting
 
 - **Empty Java navigation:** ensure Maven/Gradle dependencies resolve. Maven caches failed downloads; after repairing networking, `mvn -U compile` can refresh them. Restart the service/Tern afterward. JDT's detailed log is `data/.metadata/.log` under its state directory.
+- **Empty Java navigation in a Gradle project:** JDT's log (`data/.metadata/.log`) may report `Unsupported class file major version 69`, meaning Gradle ran on Java 25. The plugin passes `JAVA_HOME` as `java.import.gradle.java.home`; set `JAVA_HOME` to a JDK your Gradle version supports (21 for Gradle 8.x) while keeping `JDTLS_JAVA_HOME` on 25.
 - **Kotlin import failure:** the error includes the server log path, usually `kotlin/system/log/intellij-server.log`. `noBuildSystemFound` means the root is not a supported build project.
 - **Gradle cannot find a JDK:** the Kotlin server's bundled JBR is not your project toolchain. Install the requested JDK; use the project's `org.gradle.java.installations.paths` for nonstandard locations.
 - **CLI works but GUI fails:** inspect Tern's inherited PATH, `JDTLS_JAVA_HOME`, `JAVA_HOME` and server overrides. Rebuild the helper and reload plugins after source changes.

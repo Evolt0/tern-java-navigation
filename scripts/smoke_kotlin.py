@@ -80,8 +80,9 @@ def smoke(binary, project, build_tool):
                TERN_WINDOW_KEY="kotlin-release-smoke-" + uuid.uuid4().hex)
     # CI Gradle actions install init scripts and caching into GRADLE_USER_HOME.
     # The language server imports with the runner's Gradle and must not inherit
-    # them: an isolated home proves the project imports on its own.
-    env["GRADLE_USER_HOME"] = str(project.parent / "gradle-user-home")
+    # them. Keep a dedicated, reusable home outside the disposable project so a
+    # retry does not download the distribution and Kotlin plugin again.
+    env["GRADLE_USER_HOME"] = str(Path(tempfile.gettempdir()) / "tern-java-smoke-gradle-home")
     create_build(project, build_tool, env)
     kotlin = project / "src/main/kotlin/mixedsmoke"
     java = project / "src/main/java/mixedsmoke"

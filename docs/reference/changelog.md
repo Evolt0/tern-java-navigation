@@ -6,6 +6,7 @@
 - 对齐 Go Navigation 1.3.3 的 macOS 监听修复：Java / Kotlin watcher 在 macOS 改用单一 FSEvents 原生流，不再由 fsnotify / kqueue 为每个目录和文件持有句柄；监听根合并、日志游标回放、marker 往返 + flush / dispatch 屏障和关闭顺序均已移植，事件历史丢失或监听根失效会使会话失败而不是返回过期结果。
 - Linux 等非 macOS 平台保留 fsnotify fallback，继续按目录递归监听并保留 marker 屏障；所有平台共享 Java / Kotlin 源文件、构建文件和动态 LSP watcher 注册语义。
 - JVM 语言服务关闭改为 LSP `shutdown` / `exit` 优先，1 秒超时后才强杀本会话的进程组；优雅释放索引和资源，不影响其他客户端。
+- 修复 Gradle 项目 Java 导航为空：JDT LS 运行在 Java 25 时，Buildship 默认也用服务器 JVM 启动 Gradle 8.x，导致 `Unsupported class file major version 69`。现在把 `JAVA_HOME` 传给 `java.import.gradle.java.home`，Gradle 导入使用项目 JDK（`JDTLS_JAVA_HOME` 仍可独立为 25）。
 - 发布包许可证改为读取实际二进制的依赖构建信息校验，适配 macOS 使用 purego、Linux 使用 fsnotify 的平台差异。
 - 已验证：`go test -race ./...`、真实 JDT LS Java / JDK 源码导航、选中标识符与未保存 overlay、Kotlin Maven / Gradle 混合导航、四个 Unix target 的归档与 SHA-256。macOS 本机测试需完整 Xcode SDK；CommandLineTools 的损坏 SDK 会导致 cgo / race 链接失败，与插件代码无关。
 

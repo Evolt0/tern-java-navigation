@@ -433,3 +433,19 @@ func TestJDTServerRuntimePreservesProjectJavaHome(t *testing.T) {
 		t.Fatal("language-server override replaced the project's build JDK")
 	}
 }
+
+func TestJavaGradleImportUsesProjectRuntime(t *testing.T) {
+	t.Setenv("JAVA_HOME", "/opt/project-jdk")
+	settings := javaSettings()["java"].(map[string]any)
+	gradle := settings["import"].(map[string]any)["gradle"].(map[string]any)
+	java := gradle["java"].(map[string]any)
+	if java["home"] != "/opt/project-jdk" {
+		t.Fatalf("Gradle import runtime = %v", java["home"])
+	}
+	t.Setenv("JAVA_HOME", "")
+	settings = javaSettings()["java"].(map[string]any)
+	gradle = settings["import"].(map[string]any)["gradle"].(map[string]any)
+	if _, ok := gradle["java"]; ok {
+		t.Fatal("empty JAVA_HOME must not override Buildship's JVM")
+	}
+}

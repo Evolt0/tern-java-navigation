@@ -22,7 +22,7 @@ Go 负责短生命周期 CLI、Unix socket、文件监听和 LSP 通信；不在
 ## 环境
 
 - Tern，终端可以运行 `tern`。桌面集成使用原生文件编辑器和插件 API。
-- Java：**JDT LS 1.63.0+，语言服务器运行在 Java 25+**。服务器 JDK 与项目构建 JDK 分离：`JDTLS_JAVA_HOME` 指定服务器，`JAVA_HOME` 保留项目所需版本。
+- Java：**JDT LS 1.63.0+，语言服务器运行在 Java 25+**。服务器 JDK 与项目构建 JDK 分离：`JDTLS_JAVA_HOME` 指定服务器，`JAVA_HOME` 保留项目所需版本。Gradle 导入使用 `JAVA_HOME`；Gradle 8.x 不能在 Java 25 上运行，请把 `JAVA_HOME` 指向受支持的 JDK（例如 21），或使用 Gradle 9。
 - Kotlin：**JetBrains 官方 Kotlin LSP 263.7084.0**，不是旧的 `fwcd/kotlin-language-server`。官方分平台发行包自带所需的 JBR；项目编译所需的 JDK 仍独立安装。
 - 从源码构建后端需要 Go 1.23 或更新版本。
 - 打包与发布冒烟脚本需要 Python 3.9+；普通插件运行不需要 Python，使用上游 `jdtls` Python 启动器时除外。
@@ -122,6 +122,7 @@ JDT 的 `workspace/symbol` 仅覆盖类型，因此本插件使用每个源文�
 ## 排障
 
 - Java 导航为空：先确认 Maven / Gradle 项目能解析依赖。Maven 会缓存下载失败；网络恢复后可以在项目中运行 `mvn -U compile`，然后重启服务 / Tern。JDT 的详细日志位于状态目录 `data/.metadata/.log`。
+- Gradle 项目 Java 导航为空：JDT 日志（`data/.metadata/.log`）可能出现 `Unsupported class file major version 69`，表示 Gradle 在 Java 25 上运行。插件会把 `JAVA_HOME` 传给 `java.import.gradle.java.home`；把 `JAVA_HOME` 设为当前 Gradle 支持的 JDK（Gradle 8.x 用 21），`JDTLS_JAVA_HOME` 继续保留 25。
 - Kotlin 导入失败：错误中包含服务日志位置；查看 `kotlin/system/log/intellij-server.log`。`noBuildSystemFound` 表示当前根目录不是受支持的构建项目。
 - Gradle 找不到指定 JDK：Kotlin 服务自身的 JBR 不等于项目 toolchain。安装项目要求的 JDK；非标准目录可通过项目的 `org.gradle.java.installations.paths` 配置。
 - CLI 正常但 Tern 不工作：检查 GUI 进程继承的 PATH、`JDTLS_JAVA_HOME`、`JAVA_HOME` 和语言服务变量，重新构建后端并 reload 插件。
