@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -24,41 +25,84 @@ type javaLaunch struct {
 	sources    string
 }
 
+const jdtMinimumJavaMajor = 21
+
+func javaMajor(executable string) int {
+	output, err := exec.Command(executable, "-version").CombinedOutput()
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		index := strings.Index(line, `version "`)
+		if index < 0 {
+			continue
+		}
+		version := line[index+len(`version "`):]
+		if end := strings.IndexByte(version, '"'); end >= 0 {
+			version = version[:end]
+		}
+		if dot := strings.IndexByte(version, '.'); dot >= 0 {
+			version = version[:dot]
+		}
+		if major, err := strconv.Atoi(version); err == nil {
+			return major
+		}
+	}
+	return 0
+}
+
+func firstCompatibleJava(candidates []string, minimum int) string {
+	// Prefer the newest runtime: JDT LS 1.63 needs Java 25 while older releases
+	// still run on 21, and a newer JVM satisfies both.
+	best, bestMajor := "", 0
+	seen := make(map[string]bool)
+	for _, candidate := range candidates {
+		if candidate == "" || seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		if major := javaMajor(candidate); major >= minimum && major > bestMajor {
+			best, bestMajor = candidate, major
+		}
+	}
+	return best
+}
+
 func javaEnvironment() ([]string, string, error) {
 	env := os.Environ()
-	java := ""
-	home := os.Getenv("JDTLS_JAVA_HOME")
-	if home == "" {
-		home = os.Getenv("JAVA_HOME")
-	}
-	if home != "" {
-		var err error
-		java, err = exec.LookPath(filepath.Join(home, "bin", "java"))
-		if err != nil {
-			return nil, "", fmt.Errorf("JDTLS_JAVA_HOME / JAVA_HOME must contain a Java 25+ runtime for JDT LS 1.63+: %w", err)
+	if home := os.Getenv("JDTLS_JAVA_HOME"); home != "" {
+		java := filepath.Join(home, "bin", "java")
+		if major := javaMajor(java); major < jdtMinimumJavaMajor {
+			return nil, "", fmt.Errorf("JDTLS_JAVA_HOME contains Java %d; JDT LS 1.63+ requires Java %d or newer", major, jdtMinimumJavaMajor)
 		}
-	} else if found, err := exec.LookPath("java"); err == nil {
-		java = found
-	} else {
-		for _, path := range []string{"/opt/homebrew/opt/openjdk@25/bin/java", "/opt/homebrew/opt/openjdk/bin/java", "/usr/local/opt/openjdk@25/bin/java", "/usr/local/opt/openjdk/bin/java", "/usr/bin/java"} {
-			if found, err := exec.LookPath(path); err == nil {
-				java = found
-				break
-			}
-		}
+		return addJavaPath(env, java), java, nil
 	}
+	candidates := make([]string, 0, 6)
+	if home := os.Getenv("JAVA_HOME"); home != "" {
+		candidates = append(candidates, filepath.Join(home, "bin", "java"))
+	}
+	if found, err := exec.LookPath("java"); err == nil {
+		candidates = append(candidates, found)
+	}
+	candidates = append(candidates,
+		"/opt/homebrew/opt/openjdk/bin/java", "/opt/homebrew/opt/openjdk@25/bin/java",
+		"/usr/local/opt/openjdk/bin/java", "/usr/local/opt/openjdk@25/bin/java", "/usr/bin/java")
+	java := firstCompatibleJava(candidates, jdtMinimumJavaMajor)
 	if java == "" {
-		return nil, "", errors.New("JDT LS runtime not found: install Java 25 or newer and set JDTLS_JAVA_HOME (or JAVA_HOME)")
+		return nil, "", fmt.Errorf("JDT LS requires Java %d or newer; install it or set JDTLS_JAVA_HOME (checked JAVA_HOME, PATH and common Homebrew locations)", jdtMinimumJavaMajor)
 	}
+	return addJavaPath(env, java), java, nil
+}
+
+func addJavaPath(env []string, java string) []string {
 	// GUI applications often omit Homebrew, including the Python interpreter
 	// used by the upstream jdtls launcher. Preserve the user's PATH precedence.
 	path := os.Getenv("PATH")
-	if home := os.Getenv("JAVA_HOME"); home != "" {
-		path = filepath.Join(home, "bin") + string(os.PathListSeparator) + path
+	if dir := filepath.Dir(java); dir != "" {
+		path = dir + string(os.PathListSeparator) + path
 	}
 	path += string(os.PathListSeparator) + "/opt/homebrew/bin" + string(os.PathListSeparator) + "/usr/local/bin"
-	env = replaceEnvironment(env, "PATH", path)
-	return env, java, nil
+	return replaceEnvironment(env, "PATH", path)
 }
 
 func replaceEnvironment(env []string, key, value string) []string {

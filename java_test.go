@@ -409,7 +409,7 @@ func TestJDTServerRuntimePreservesProjectJavaHome(t *testing.T) {
 	serverHome, projectHome := filepath.Join(root, "server"), filepath.Join(root, "project")
 	for _, home := range []string{serverHome, projectHome} {
 		path := filepath.Join(home, "bin", "java")
-		putFile(t, path, "#!/bin/sh\nexit 0\n")
+		putFile(t, path, "#!/bin/sh\necho 'openjdk version \"25.0.1\" 2025-01-01'\n")
 		if err := os.Chmod(path, 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -447,5 +447,38 @@ func TestJavaGradleImportUsesProjectRuntime(t *testing.T) {
 	gradle = settings["import"].(map[string]any)["gradle"].(map[string]any)
 	if _, ok := gradle["java"]; ok {
 		t.Fatal("empty JAVA_HOME must not override Buildship's JVM")
+	}
+}
+
+func TestJavaRuntimeSelectionSkipsUnsupportedJVM(t *testing.T) {
+	root := t.TempDir()
+	oldJava, newJava := filepath.Join(root, "old", "bin", "java"), filepath.Join(root, "new", "bin", "java")
+	putFile(t, oldJava, "#!/bin/sh\necho 'openjdk version \"17.0.14\" 2025-01-01'\n")
+	putFile(t, newJava, "#!/bin/sh\necho 'openjdk version \"23.0.2\" 2025-01-01'\n")
+	for _, path := range []string{oldJava, newJava} {
+		if err := os.Chmod(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if major := javaMajor(oldJava); major != 17 {
+		t.Fatalf("major = %d", major)
+	}
+	if got := firstCompatibleJava([]string{oldJava, newJava}, jdtMinimumJavaMajor); got != newJava {
+		t.Fatalf("selected %s", got)
+	}
+	if got := firstCompatibleJava([]string{oldJava}, jdtMinimumJavaMajor); got != "" {
+		t.Fatalf("accepted Java 17: %s", got)
+	}
+}
+
+func TestJDTServerJavaHomeOverrideMustBeCompatible(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "jdk17")
+	putFile(t, filepath.Join(home, "bin", "java"), "#!/bin/sh\necho 'openjdk version \"17.0.14\" 2025-01-01'\n")
+	if err := os.Chmod(filepath.Join(home, "bin", "java"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("JDTLS_JAVA_HOME", home)
+	if _, _, err := javaEnvironment(); err == nil || !strings.Contains(err.Error(), "requires Java 21") {
+		t.Fatalf("unsupported override accepted: %v", err)
 	}
 }

@@ -172,7 +172,7 @@ def smoke(binary, project):
         require(bool(resolved), "install jdtls or set JDTLS / JDTLS_HOME")
     java_home = os.environ.get("JDTLS_JAVA_HOME") or os.environ.get("JAVA_HOME")
     java = str(Path(java_home) / "bin/java") if java_home else shutil.which("java")
-    require(bool(java) and shutil.which(java) is not None, "JDK 25+ must be available via JDTLS_JAVA_HOME, JAVA_HOME or PATH")
+    require(bool(java) and shutil.which(java) is not None, "a Java runtime matching the JDT LS version must be available via JDTLS_JAVA_HOME, JAVA_HOME or PATH")
     env = dict(os.environ, TERN_WINDOW_KEY="release-smoke-" + uuid.uuid4().hex)
     if launcher or not home:
         env["JDTLS"] = str(Path(resolved).resolve())

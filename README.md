@@ -13,7 +13,7 @@ Go retains the reference implementation's inexpensive CLI startup, Unix socket d
 ## Requirements
 
 - Tern with the `tern` CLI available.
-- Java: **JDT LS 1.63.0+ and a Java 25+ server runtime**. The project build JDK is independent; use `JDTLS_JAVA_HOME` for the server and keep `JAVA_HOME` for your project. Gradle imports run on `JAVA_HOME`; Gradle 8.x cannot run on Java 25, so point `JAVA_HOME` at a supported JDK (for example 21) or use Gradle 9.
+- Java: **JDT LS 1.61+**. JDT LS 1.61 runs on Java 21+; 1.62 and 1.63 require Java 25. Project source level can be Java 8–25 regardless of the server runtime. The project build JDK is independent: use `JDTLS_JAVA_HOME` for the server and keep `JAVA_HOME` for your project. Gradle imports run on `JAVA_HOME`; Gradle 8.x cannot run on Java 25, so point `JAVA_HOME` at a supported JDK (for example 21) or use Gradle 9.
 - Kotlin: **JetBrains Kotlin LSP 263.7084.0**, not `fwcd/kotlin-language-server`. Platform-specific standalone distributions include their required JBR; the project's own build JDK is separate.
 - Go 1.23+ to build this helper from source.
 - Python 3.9+ for packaging and release smoke scripts. The plugin does not require Python when using `JDTLS_HOME`; upstream's optional `jdtls` launcher itself uses Python.
@@ -26,19 +26,20 @@ Kotlin LSP remains Alpha. Supported Kotlin project scope is **JVM Maven/Gradle**
 On macOS:
 
 ```sh
-brew install openjdk@25 jdtls
+brew install jdtls
 brew install JetBrains/utils/kotlin-lsp
-export JDTLS_JAVA_HOME="$(brew --prefix openjdk@25)/libexec/openjdk.jdk/Contents/Home"
 ```
+
+Homebrew's `jdtls` is 1.63 and installs a compatible OpenJDK automatically. On a machine with only Java 21, use [JDT LS 1.61.0](https://download.eclipse.org/jdtls/milestones/1.61.0/) instead; it supports `java.search.scope` and runs on 21.
 
 For Linux or pinned installations, download and verify the adjacent SHA-256 checksums before extracting:
 
-- [JDT LS 1.63.0 distribution](https://download.eclipse.org/jdtls/milestones/1.63.0/). Set `JDTLS_HOME` to its extracted root. Its actual Eclipse bundles require Java 25, even if an older upstream README still says 21.
+- [JDT LS 1.63.0 distribution](https://download.eclipse.org/jdtls/milestones/1.63.0/) (Java 25+), or [JDT LS 1.61.0](https://download.eclipse.org/jdtls/milestones/1.61.0/) (Java 21+). Set `JDTLS_HOME` to the extracted root. Upstream READMEs for 1.62/1.63 still say Java 21, but their Eclipse bundles require 25.
 - [Kotlin LSP 263.7084.0 standalone distributions](https://github.com/Kotlin/kotlin-lsp/releases/tag/kotlin-lsp%2Fv263.7084.0). Set `KOTLIN_LSP_HOME` to the directory containing `bin/intellij-server`.
 
 Environment variables must be inherited by the **Tern process**, not merely set in a separate shell after Tern has started.
 
-Runtime selection is `JDTLS_JAVA_HOME` → `JAVA_HOME` → PATH / common JDK locations. Setting the server override does not replace the project JDK in the child environment. The smoke fixtures use a separate JDK 21 for Maven/Gradle builds.
+Runtime selection is `JDTLS_JAVA_HOME` → the newest compatible Java found via `JAVA_HOME`, PATH and common Homebrew/JDK locations. The newest runtime is preferred so JDT LS 1.63 gets a Java 25+ JVM; explicit `JDTLS_JAVA_HOME` must satisfy the server's requirement. Setting the server override does not replace the project JDK in the child environment. The smoke fixtures use a separate JDK 21 for Maven/Gradle builds.
 
 | Server | Discovery order |
 | --- | --- |
@@ -106,7 +107,7 @@ State lives under `/tmp/tern-java-<uid>/<identity>/`, with private 0700 director
 - Java requests use JDT LS; Kotlin requests use Kotlin LSP. Kotlin→Java definitions, Java references to Kotlin declarations, and merged Java/Kotlin symbol search are exercised by real-server smoke scenarios.
 - **Full Java→Kotlin source navigation and complete Kotlin references queried from Java are not promised.** JDT LS does not analyze Kotlin, and the Kotlin distribution's Java provider is incomplete. No textual same-name heuristic fabricates semantic results.
 - Kotlin's Java references can start at a call expression rather than its method identifier; the server-provided range is preserved.
-- Java references use JDT's `projectOnly` scope (project sources, tests and referenced projects), not JDK/dependency internals. Definitions can still target libraries. This avoids indexing or returning enormous sets of internal JDK usages when querying a common type such as `String`; JDT LS 1.63+ is required for this scope.
+- Java references use JDT's `projectOnly` scope (project sources, tests and referenced projects), not JDK/dependency internals. Definitions can still target libraries. This avoids indexing or returning enormous sets of internal JDK usages when querying a common type such as `String`; JDT LS 1.61+ is required for this scope.
 - `jdt:` contents supplied by the server (attached source or its decompilation) and readable local `jar:` source entries are materialized unchanged into the private cache. Missing server source and local `.class` archive entries fail explicitly; the plugin does not fabricate decompiled text. Cached copies are not project source and should not be edited.
 - Local files only. No ordinary-symbol Command-click and no separate selected-item preview panel.
 - Source overlays are unsaved; Maven/Gradle build configuration must be saved. Servers may generate Eclipse/build metadata, and project import can execute build plugins. Open trusted projects only.
@@ -115,7 +116,8 @@ State lives under `/tmp/tern-java-<uid>/<identity>/`, with private 0700 director
 ## Troubleshooting
 
 - **Empty Java navigation:** ensure Maven/Gradle dependencies resolve. Maven caches failed downloads; after repairing networking, `mvn -U compile` can refresh them. Restart the service/Tern afterward. JDT's detailed log is `data/.metadata/.log` under its state directory.
-- **Empty Java navigation in a Gradle project:** JDT's log (`data/.metadata/.log`) may report `Unsupported class file major version 69`, meaning Gradle ran on Java 25. The plugin passes `JAVA_HOME` as `java.import.gradle.java.home`; set `JAVA_HOME` to a JDK your Gradle version supports (21 for Gradle 8.x) while keeping `JDTLS_JAVA_HOME` on 25.
+- **JDT LS exits with `Require-Capability: osgi.ee; ... version=25`:** 1.62/1.63 need Java 25 even though their README says 21. Install Java 25 and let runtime selection find it, set `JDTLS_JAVA_HOME`, or use JDT LS 1.61 with Java 21.
+- **Empty Java navigation in a Gradle project:** JDT's log (`data/.metadata/.log`) may report `Unsupported class file major version 69`, meaning Gradle ran on Java 25. The plugin passes `JAVA_HOME` as `java.import.gradle.java.home`; set `JAVA_HOME` to a JDK your Gradle version supports (21 for Gradle 8.x) while keeping the server runtime separate.
 - **Kotlin import failure:** the error includes the server log path, usually `kotlin/system/log/intellij-server.log`. `noBuildSystemFound` means the root is not a supported build project.
 - **Gradle cannot find a JDK:** the Kotlin server's bundled JBR is not your project toolchain. Install the requested JDK; use the project's `org.gradle.java.installations.paths` for nonstandard locations.
 - **CLI works but GUI fails:** inspect Tern's inherited PATH, `JDTLS_JAVA_HOME`, `JAVA_HOME` and server overrides. Rebuild the helper and reload plugins after source changes.
@@ -127,13 +129,13 @@ State lives under `/tmp/tern-java-<uid>/<identity>/`, with private 0700 director
 ```sh
 go test -race ./...
 go build -o bin/tern-java-navigation .
-python3 scripts/package.py --check-tag v0.1.1
+python3 scripts/package.py --check-tag v0.1.2
 python3 scripts/package.py --output dist
-python3 scripts/smoke_release.py dist/java-navigation-0.1.1-darwin-arm64.tar.gz
+python3 scripts/smoke_release.py dist/java-navigation-0.1.2-darwin-arm64.tar.gz
 python3 scripts/smoke_kotlin.py --binary bin/tern-java-navigation --build-tool all
 ```
 
-Use your native target in the archive name. Smoke requires JDT LS 1.63.0+, JDK 25+ via `JDTLS_JAVA_HOME`, the Kotlin server, and project JDK 21 via `JAVA_HOME`. Gradle creates the wrapper; fixtures pin Kotlin 2.2.21 / Gradle 8.14.3 and are not precompiled. The Java smoke also checks `java.lang.String` source navigation with project-only usage results, and forwards/reverse native selections.
+Use your native target in the archive name. Smoke requires JDT LS 1.61+ (1.61 runs on Java 21; 1.62/1.63 need Java 25), the Kotlin server, and project JDK 21 via `JAVA_HOME`. Gradle creates the wrapper; fixtures pin Kotlin 2.2.21 / Gradle 8.14.3 and are not precompiled. The Java smoke also checks `java.lang.String` source navigation with project-only usage results, and forwards/reverse native selections. CI runs it with 1.63/Java 25 and, on linux-amd64, with 1.61/Java 21.
 
 On macOS, `-race` and cgo builds use the system linker. If a CommandLineTools SDK fails with `tapi error: malformed file`, point `SDKROOT` at the full Xcode SDK (`/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk`); release builds set `CGO_ENABLED=0` and do not need it.
 

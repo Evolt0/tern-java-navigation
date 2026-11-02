@@ -1,6 +1,6 @@
 schema = 1
 id = "java-navigation"
 name = "Java / Kotlin Navigation"
-version = "0.1.1"
+version = "0.1.2"
 description = "Native Java and Kotlin navigation, project symbol search, and prewarmed editor-lifetime language servers."
 window = "window.luau"

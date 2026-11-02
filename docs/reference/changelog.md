@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 — 2026-11-02
+
+- 支持 Java 21：JDT LS 1.61 可在 Java 21+ 运行且具备 `projectOnly` 引用范围；1.62 / 1.63 的实际 Eclipse bundles 要求 Java 25。插件运行时下限降为 21，并自动选择最新兼容 Java；显式 `JDTLS_JAVA_HOME` 仍会校验版本。
+- 项目源码级别仍由 JDT 支持 Java 8–25，与语言服务运行时无关；文档增加 JDT 版本 / Java 运行时对应关系及 `osgi.ee ... version=25` 排错。
+- CI 在 linux-amd64 额外用 JDT LS 1.61 + JDK 21 执行真实 Java 冒烟，覆盖 Java 21 路径。
+
 ## 0.1.1 — 2026-11-02
 
 - 对齐 Go Navigation 1.3.3：导航请求传递正向 / 反向原生 UTF-8 选区，按选区起点转换为 LSP UTF-16 位置。双击或选中 Java / Kotlin 标识符后，caret 位于选区排他末尾不再导致 `no identifier found`；折叠选区仍使用 caret，非法码点边界明确报错。

@@ -180,6 +180,28 @@ jobs:
           ARCHIVE: ${{ steps.metadata.outputs.archive }}
         run: python3 scripts/smoke_kotlin.py "dist/$ARCHIVE" --build-tool all
 
+      - name: Smoke Java with JDT LS 1.61 on Java 21
+        if: matrix.target == 'linux-amd64'
+        env:
+          ARCHIVE: ${{ steps.metadata.outputs.archive }}
+          JDTLS161_URL: https://download.eclipse.org/jdtls/milestones/1.61.0/jdt-language-server-1.61.0-202609031315.tar.gz
+          JDTLS161_SHA256: 338e7e73d61836651ba2453919a0d34fa763eb4e7c03342092309bffb8934c64
+        run: |
+          curl --fail --location --retry 3 "$JDTLS161_URL" --output "$RUNNER_TEMP/jdtls161.tar.gz"
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          archive = Path(os.environ["RUNNER_TEMP"]) / "jdtls161.tar.gz"
+          actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if actual != os.environ["JDTLS161_SHA256"]:
+              raise SystemExit("Eclipse JDT LS 1.61 SHA-256 mismatch: " + actual)
+          PY
+          mkdir "$RUNNER_TEMP/jdtls161"
+          tar -xzf "$RUNNER_TEMP/jdtls161.tar.gz" -C "$RUNNER_TEMP/jdtls161"
+          JDTLS_HOME="$RUNNER_TEMP/jdtls161" JDTLS_JAVA_HOME="$JAVA_HOME" \
+            python3 scripts/smoke_release.py "dist/$ARCHIVE"
+
       - name: Upload language-server logs on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

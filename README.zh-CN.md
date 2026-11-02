@@ -22,7 +22,7 @@ Go 负责短生命周期 CLI、Unix socket、文件监听和 LSP 通信；不在
 ## 环境
 
 - Tern，终端可以运行 `tern`。桌面集成使用原生文件编辑器和插件 API。
-- Java：**JDT LS 1.63.0+，语言服务器运行在 Java 25+**。服务器 JDK 与项目构建 JDK 分离：`JDTLS_JAVA_HOME` 指定服务器，`JAVA_HOME` 保留项目所需版本。Gradle 导入使用 `JAVA_HOME`；Gradle 8.x 不能在 Java 25 上运行，请把 `JAVA_HOME` 指向受支持的 JDK（例如 21），或使用 Gradle 9。
+- Java：**JDT LS 1.61+**。JDT LS 1.61 可在 Java 21+ 运行；1.62 / 1.63 实际需要 Java 25。项目源码级别可为 Java 8–25，与语言服务运行时无关。服务器 JDK 与项目构建 JDK 分离：`JDTLS_JAVA_HOME` 指定服务器，`JAVA_HOME` 保留项目所需版本。Gradle 导入使用 `JAVA_HOME`；Gradle 8.x 不能在 Java 25 上运行，请把 `JAVA_HOME` 指向受支持的 JDK（例如 21），或使用 Gradle 9。
 - Kotlin：**JetBrains 官方 Kotlin LSP 263.7084.0**，不是旧的 `fwcd/kotlin-language-server`。官方分平台发行包自带所需的 JBR；项目编译所需的 JDK 仍独立安装。
 - 从源码构建后端需要 Go 1.23 或更新版本。
 - 打包与发布冒烟脚本需要 Python 3.9+；普通插件运行不需要 Python，使用上游 `jdtls` Python 启动器时除外。
@@ -35,19 +35,20 @@ Kotlin LSP 当前为 Alpha。本插件支持其 **JVM Maven / Gradle 项目**；
 macOS 可使用 Homebrew：
 
 ```sh
-brew install openjdk@25 jdtls
+brew install jdtls
 brew install JetBrains/utils/kotlin-lsp
-export JDTLS_JAVA_HOME="$(brew --prefix openjdk@25)/libexec/openjdk.jdk/Contents/Home"
 ```
+
+Homebrew 的 `jdtls` 是 1.63，会一并安装兼容的 OpenJDK。只有 Java 21 的机器改用 [JDT LS 1.61.0](https://download.eclipse.org/jdtls/milestones/1.61.0/)，它支持 `java.search.scope` 且可在 Java 21 运行。
 
 手动安装、Linux 或需要固定版本时：
 
-- [JDT LS 1.63.0 下载目录](https://download.eclipse.org/jdtls/milestones/1.63.0/)：下载归档并验证对应 SHA-256，解压后设置 `JDTLS_HOME`。该发行版实际的 Eclipse bundles 要求 Java 25，不能沿用过时上游 README 的 Java 21 要求。
+- [JDT LS 1.63.0 下载目录](https://download.eclipse.org/jdtls/milestones/1.63.0/)（Java 25+），或 [JDT LS 1.61.0](https://download.eclipse.org/jdtls/milestones/1.61.0/)（Java 21+）：下载归档并验证对应 SHA-256，解压后设置 `JDTLS_HOME`。1.62 / 1.63 的上游 README 仍写 Java 21，但实际 Eclipse bundles 要求 25。
 - [Kotlin LSP 263.7084.0 下载页](https://github.com/Kotlin/kotlin-lsp/releases/tag/kotlin-lsp%2Fv263.7084.0)：选择系统 / 架构对应的 standalone 包，验证对应 SHA-256 后解压，设置 `KOTLIN_LSP_HOME` 为包含 `bin/intellij-server` 的目录。
 
 这些变量必须由 **Tern 进程继承**；只在另一个已打开的终端设置，不会改变正在运行的 Tern 的环境。
 
-JDT 运行时依次查找 `JDTLS_JAVA_HOME` → `JAVA_HOME` → PATH / 常见 JDK 安装位置。指定服务器 JDK 不会覆盖子进程环境中的项目 `JAVA_HOME`。冒烟项目另用 JDK 21 构建；普通项目保留自己的 toolchain 即可。
+JDT 运行时优先使用 `JDTLS_JAVA_HOME`；否则在 `JAVA_HOME`、PATH 和常见 JDK 安装位置中选择版本最高的兼容 Java。优先最新版本可让 JDT LS 1.63 获得 Java 25+；显式 `JDTLS_JAVA_HOME` 必须满足服务器要求。指定服务器 JDK 不会覆盖子进程环境中的项目 `JAVA_HOME`。冒烟项目另用 JDK 21 构建；普通项目保留自己的 toolchain 即可。
 
 查找顺序：
 
@@ -113,7 +114,7 @@ JDT 的 `workspace/symbol` 仅覆盖类型，因此本插件使用每个源文�
 - **Java 文件使用 JDT LS；Kotlin 文件使用 Kotlin LSP。** 已验证 Kotlin→Java 定义、Kotlin 符号在 Java 中的引用，以及混合项目的合并符号搜索。
 - **不承诺 Java→Kotlin 的完整源代码跳转或从 Java 发起的完整 Kotlin 引用查询。** JDT LS 不解析 Kotlin，官方 Kotlin 包的 Java provider 也不是完整的 Java 服务；不会用同名文本匹配伪造结果。
 - 引用范围由服务决定，Kotlin 服务返回的 Java 引用可能定位到调用表达式起点，而不只是方法名。
-- Java 引用使用 JDT 的 `projectOnly` 范围，包含项目源码、测试与关联项目，不扫描 JDK / 依赖内部的使用点；定义仍可跳到库源码。查询 `String` 等常用类型不会拉回整个 JDK 的巨量内部引用，此范围要求 JDT LS 1.63+。
+- Java 引用使用 JDT 的 `projectOnly` 范围，包含项目源码、测试与关联项目，不扫描 JDK / 依赖内部的使用点；定义仍可跳到库源码。查询 `String` 等常用类型不会拉回整个 JDK 的巨量内部引用，此范围要求 JDT LS 1.61+。
 - JDT `jdt:` 提供的源码（附加源码或服务端反编译结果）和本地 `jar:` 源码条目会原样写入私有缓存供预览 / 跳转。服务未提供源码，或本地归档只有 `.class` 条目时明确报错，不伪造反编译内容。缓存副本不是项目文件，不应编辑。
 - 仅支持本地文件。没有普通符号 Command+点击，也没有独立预览面板。
 - 未保存的 Java / Kotlin 源码参与查询；`pom.xml`、Gradle 配置等必须保存后交给构建导入。语言服务可能生成 Eclipse / 构建工具元数据，项目导入也可能执行构建插件；只打开可信项目。
@@ -122,7 +123,8 @@ JDT 的 `workspace/symbol` 仅覆盖类型，因此本插件使用每个源文�
 ## 排障
 
 - Java 导航为空：先确认 Maven / Gradle 项目能解析依赖。Maven 会缓存下载失败；网络恢复后可以在项目中运行 `mvn -U compile`，然后重启服务 / Tern。JDT 的详细日志位于状态目录 `data/.metadata/.log`。
-- Gradle 项目 Java 导航为空：JDT 日志（`data/.metadata/.log`）可能出现 `Unsupported class file major version 69`，表示 Gradle 在 Java 25 上运行。插件会把 `JAVA_HOME` 传给 `java.import.gradle.java.home`；把 `JAVA_HOME` 设为当前 Gradle 支持的 JDK（Gradle 8.x 用 21），`JDTLS_JAVA_HOME` 继续保留 25。
+- JDT LS 报 `Require-Capability: osgi.ee; ... version=25`：1.62 / 1.63 需要 Java 25（README 写 21 是过时的）。安装 Java 25 让运行时选择找到它，设置 `JDTLS_JAVA_HOME`，或改用 Java 21 可运行的 JDT LS 1.61。
+- Gradle 项目 Java 导航为空：JDT 日志（`data/.metadata/.log`）可能出现 `Unsupported class file major version 69`，表示 Gradle 在 Java 25 上运行。插件会把 `JAVA_HOME` 传给 `java.import.gradle.java.home`；把 `JAVA_HOME` 设为当前 Gradle 支持的 JDK（Gradle 8.x 用 21），服务器运行时另行选择。
 - Kotlin 导入失败：错误中包含服务日志位置；查看 `kotlin/system/log/intellij-server.log`。`noBuildSystemFound` 表示当前根目录不是受支持的构建项目。
 - Gradle 找不到指定 JDK：Kotlin 服务自身的 JBR 不等于项目 toolchain。安装项目要求的 JDK；非标准目录可通过项目的 `org.gradle.java.installations.paths` 配置。
 - CLI 正常但 Tern 不工作：检查 GUI 进程继承的 PATH、`JDTLS_JAVA_HOME`、`JAVA_HOME` 和语言服务变量，重新构建后端并 reload 插件。
@@ -134,13 +136,13 @@ JDT 的 `workspace/symbol` 仅覆盖类型，因此本插件使用每个源文�
 ```sh
 go test -race ./...
 go build -o bin/tern-java-navigation .
-python3 scripts/package.py --check-tag v0.1.1
+python3 scripts/package.py --check-tag v0.1.2
 python3 scripts/package.py --output dist
-python3 scripts/smoke_release.py dist/java-navigation-0.1.1-darwin-arm64.tar.gz
+python3 scripts/smoke_release.py dist/java-navigation-0.1.2-darwin-arm64.tar.gz
 python3 scripts/smoke_kotlin.py --binary bin/tern-java-navigation --build-tool all
 ```
 
-替换归档中的 target 为当前平台。冒烟需要 JDT LS 1.63.0+、由 `JDTLS_JAVA_HOME` 指定的 JDK 25+、Kotlin LSP，以及 `JAVA_HOME` 指定的项目 JDK 21；Gradle 用于创建 wrapper。项目固定 Kotlin 2.2.21 / Gradle 8.14.3，不预编译源码；Java 冒烟另验证 `java.lang.String` 定义源码、仅限项目的引用结果，以及正向 / 反向原生选区。
+替换归档中的 target 为当前平台。冒烟需要 JDT LS 1.61+（1.61 可在 Java 21 运行；1.62 / 1.63 需要 Java 25）、Kotlin LSP，以及 `JAVA_HOME` 指定的项目 JDK 21；Gradle 用于创建 wrapper。项目固定 Kotlin 2.2.21 / Gradle 8.14.3，不预编译源码；Java 冒烟另验证 `java.lang.String` 定义源码、仅限项目的引用结果，以及正向 / 反向原生选区。CI 使用 1.63 / Java 25，并在 linux-amd64 额外验证 1.61 / Java 21。
 
 macOS 上 `-race` 和 cgo 构建使用系统链接器。如果 CommandLineTools SDK 报 `tapi error: malformed file`，把 `SDKROOT` 指向完整 Xcode SDK（`/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk`）；发布构建设置 `CGO_ENABLED=0`，不需要它。
 
