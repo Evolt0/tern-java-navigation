@@ -188,7 +188,10 @@ jobs:
           path: |
             /tmp/tern-java-*/**/*.log
             /private/tmp/tern-java-*/**/*.log
+            /tmp/tern-java-*/**/data/.metadata/.plugins/org.eclipse.core.resources/.projects/**
+            /private/tmp/tern-java-*/**/data/.metadata/.plugins/org.eclipse.core.resources/.projects/**
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 3
           compression-level: 0
 

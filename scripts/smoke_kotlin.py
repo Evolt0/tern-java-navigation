@@ -212,10 +212,29 @@ def main():
         require(binary.is_file() and os.access(binary, os.X_OK), "smoke binary is not executable: " + str(binary))
         for build_tool in (("maven", "gradle") if args.build_tool == "all" else (args.build_tool,)):
             smoke(binary, root / build_tool, build_tool)
+    except Exception as error:
+        metadata = project_metadata(root)
+        if metadata:
+            raise ValueError(str(error) + "\n\nProject metadata:\n" + metadata) from error
+        raise
     finally:
         # Gradle or the Kotlin server can still be flushing caches just after
         # shutdown. The smoke result is already known; do not fail on cleanup.
         shutil.rmtree(root, ignore_errors=True)
+
+
+def project_metadata(root):
+    parts = []
+    for build_tool in ("maven", "gradle"):
+        for name in (".project", ".classpath"):
+            path = root / build_tool / name
+            if path.is_file():
+                parts.append(str(path) + ":\n" + path.read_text(encoding="utf-8", errors="replace"))
+    for name in ("settings.gradle.kts", "build.gradle.kts", "gradle.properties"):
+        path = root / "gradle" / name
+        if path.is_file():
+            parts.append(str(path) + ":\n" + path.read_text(encoding="utf-8", errors="replace"))
+    return "\n\n".join(parts)
 
 
 def log_tail(pattern):
